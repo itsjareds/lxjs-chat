@@ -55,9 +55,6 @@ function Peer (opts) {
     }
   }
 
-  // video stream is one-way
-  this._setupVideo(opts.stream)
-
   if (opts.initiator) {
     // data channel is two-way
     this._setupData({ channel: this._pc.createDataChannel(CHANNEL_NAME) })
@@ -114,16 +111,6 @@ Peer.prototype._setupData = function (event) {
       return
     }
     self.emit('message:' + message.type, message.data)
-  }
-}
-
-Peer.prototype._setupVideo = function (stream) {
-  this._pc.addStream(stream)
-
-  var self = this
-  this._pc.onaddstream = function (event) {
-    var stream = event.stream
-    self.emit('stream', stream)
   }
 }
 

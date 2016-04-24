@@ -1,6 +1,7 @@
-var media = require('./media')
 var Peer = require('simple-peer')
 var Socket = require('./socket')
+var DragDrop = require('drag-drop')
+var WebTorrent = require('webtorrent')
 
 var $chat = document.querySelector('form.text')
 var $count = document.querySelector('.count')
@@ -8,8 +9,8 @@ var $history = document.querySelector('.history')
 var $next = document.querySelector('.next')
 var $send = document.querySelector('.send')
 var $textInput = document.querySelector('.text input')
-var $videoLocal = document.querySelector('video.local')
-var $videoRemote = document.querySelector('video.remote')
+
+var client = new WebTorrent()
 
 function disableUI () {
   $textInput.disabled = true
@@ -37,24 +38,40 @@ function clearChat () {
   $history.innerHTML = ''
 }
 
-var peer, stream
+var peer
 var socket = new Socket()
+
+DragDrop('body', function(files) {
+  if (!peer) {
+    console.log('No peer!')
+  } else {
+    console.log(files[0].name)
+    console.log(files[0].type)
+    client.seed(files, function(torrent) {
+      console.log('Seeding torrent ' + torrent.magnetURI)
+     
+      addMedia(torrent.files[0], 'local') 
+      
+      // send to peer
+      peer.send({ type: 'magnet', data: torrent.magnetURI })
+    })
+  }
+})
+
+function addMedia(file, className) {
+  // add media to chat
+  var node = document.createElement('div')
+  node.className = className + ' media'
+  file.appendTo(node)
+  $history.appendChild(node)
+}
 
 socket.on('error', function (err) {
   console.error('[socket error]', err.stack || err.message || err)
 })
 
 socket.once('ready', function () {
-  addChat('Please grant access to your webcam. Remember to smile!', 'status')
-  media.getUserMedia(function (err, s) {
-    if (err) {
-      alert('You must share your webcam to use this app!')
-    } else {
-      stream = s
-      media.showStream($videoLocal, stream)
-      next()
-    }
-  })
+  next()
 })
 
 function next (event) {
@@ -80,7 +97,6 @@ socket.on('message:peer', function (data) {
 
   peer = new Peer({
     initiator: !!data.initiator,
-    stream: stream
   })
 
   peer.on('error', function (err) {
@@ -97,12 +113,15 @@ socket.on('message:peer', function (data) {
     socket.send({ type: 'signal', data: data })
   })
 
-  peer.on('stream', function (stream) {
-    media.showStream($videoRemote, stream)
-  })
-
   peer.on('message:chat', function (data) {
     addChat(data, 'remote')
+  })
+
+  peer.on('message:magnet', function (data) {
+    addChat('Downloading media...', 'status')
+    client.add(data, function(torrent) {
+      addMedia(torrent.files[0], 'remote')
+    })
   })
 
   // Takes ~3 seconds before this event fires when peerconnection is dead (timeout)
